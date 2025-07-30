@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRMS Chatbot</title>
+    <link rel="stylesheet" href="chatbot.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
+<body>
+     <!-- Floating Chatbot Toggle Button -->
+    <div id="chatbot-toggle" onclick="toggleChatbot()">💬</div>
+
+    <!-- Chatbot Container -->
+    <div id="chatbot-container">
+        <div class="chat-header" style="background:#fff;justify-content:center;position:relative;">
+            <span class="chat-dis" ><img  src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" alt="Chatbot Icon" class="chatbot-img">&nbsp;<span class="chat-io">Chatbot</span></span>
+            <button class="close-btn" onclick="toggleChatbot()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);">✖</button>
+        </div>
+        <div class="chat-body" id="chat-body"></div>
+        <div class="chat-footer">
+            <textarea id="chat-input" placeholder="Type your message..." onkeydown="handleKey(event)" rows="1"></textarea>
+            <button class="mic-btn" onclick="openMicModal()"><i class="fa fa-microphone"></i></button>
+            <button onclick="sendMessage()"><i class="fa fa-send-o"></i></button>
+        </div>
+        <div class="powerd-by">
+                <span>Powered by</span>
+                <img  src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" alt="Chatbot Icon" class="chatbot-img">
+        </div>
+        <!-- Mic Modal -->
+        <div id="mic-modal" class="mic-modal">
+            <div class="mic-modal-content">
+                <div class="mic-anim" id="mic-anim">
+                    <i class="fa fa-microphone"></i>
+                    <div class="mic-wave"></div>
+                </div>
+                <div id="mic-status">Listening...</div>
+                <button class="cancel-mic" onclick="closeMicModal()">Cancel</button>
+            </div>
+            
+    </div>
+    <!-- Error Toast Notification -->
+    <div id="error-toast" class="error-toast"></div>
+
+    <script src="Chatbot.js"></script>
+    <script>
+function openMicModal() {
+    document.getElementById('mic-modal').classList.add('show');
+    document.getElementById('mic-status').innerText = 'Listening...';
+    startVoice();
+}
+function closeMicModal() {
+    document.getElementById('mic-modal').classList.remove('show');
+    if (window.recognition) {
+        window.recognition.abort();
+    }
+    document.getElementById('mic-status').innerText = '';
+}
+// Patch startVoice to update modal status
+if (typeof startVoice === 'function') {
+    const origStartVoice = startVoice;
+    window.startVoice = function() {
+        if (!('webkitSpeechRecognition' in window)) {
+            document.getElementById('mic-status').innerText = 'Speech Recognition not supported!';
+            return;
+        }
+        recognition = new webkitSpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.onresult = (event) => {
+            document.getElementById('mic-status').innerText = 'Processing...';
+            chatInput.value = event.results[0][0].transcript;
+            closeMicModal();
+            sendMessage();
+        };
+        recognition.onerror = function() {
+            document.getElementById('mic-status').innerText = 'Error. Try again.';
+        };
+        recognition.onend = function() {
+            if (document.getElementById('mic-modal').classList.contains('show')) {
+                document.getElementById('mic-status').innerText = 'No input detected.';
+            }
+        };
+        recognition.start();
+    }
+}
+// --- Option logic ---
+const mainOptions = [
+    "Leave", "Salary", "Attendance", "Expenses", "HR Policies", "HR Details", "Profile & Documents", "Contact HR", "Training & Appraisal"
+];
+const responses = {
+    "Leave": [
+        "Leave Balance: You have 10 casual leaves and 5 sick leaves remaining.",
+        "Leave Carry Forward: Your company allows 5 leaves to be carried forward.",
+        "Leave Status: Approved leaves from 2nd to 5th August.",
+        "Rejected Leave: Reason - insufficient leave balance or team constraints."
+    ],
+    "Salary": [
+        "Salary Structure: Basic + HRA + Allowances - Deductions.",
+        "Payslip: Download from HRMS → Payroll → Payslip.",
+        "Salary Less: This month salary is low due to 2 unpaid leave deductions."
+    ],
+    "Attendance": [
+        "Attendance Summary: You have 95% attendance this month.",
+        "Punch Error: Missing punches on 3rd & 8th July.",
+        "Regularization: Please apply for regularization for incorrect punches."
+    ],
+    "Expenses": [
+        "Expense Status: ₹5,000 travel expense is under processing.",
+        "Expense Rejection: Reason - Missing hotel invoice.",
+        "Expense Policy: Bills above ₹10,000 need director approval."
+    ],
+    "HR Policies": [
+        "Maternity Leave: 26 weeks as per policy.",
+        "Probation Period: 6 months from joining date.",
+        "Working Days: 5 days/week as per company norms."
+    ],
+    "HR Details": [
+        "HR Department: Handles employee relations, recruitment, and compliance.",
+        "HR Manager: Contact Mr. John Doe for HR-related queries.",
+        "HR Office Hours: 9:00 AM to 6:00 PM, Monday to Friday."
+    ],
+    "Profile & Documents": [
+        "Bank Details: Update under Profile → Personal Info → Bank Details.",
+        "Offer Letter: Available under HRMS → Documents.",
+        "ID Card: Contact Admin Desk for a physical card."
+    ],
+    "Contact HR": [
+        "HR Contact: hr@company.com or call 123-456-7890.",
+        "Helpdesk: Use HRMS → Helpdesk to raise grievances."
+    ],
+    "Training & Appraisal": [
+        "Training: Available in HRMS → Learning & Development module.",
+        "Appraisal: Scheduled for September 2025."
+    ]
+};
+const goBackWords = ["yes", "ok", "go back", "back", "return", "main menu", "menu", "home"];
+let lastTopic = null;
+
+function showMainOptions(excludeTopic = null) {
+    const chatBody = document.getElementById('chat-body');
+    const optionsDiv = document.createElement('div');
+    optionsDiv.className = 'options-container';
+    mainOptions.filter(option => option !== excludeTopic).forEach(option => {
+        const btn = document.createElement('button');
+        btn.innerText = option;
+        btn.className = 'option-btn';
+        btn.onclick = () => selectOption(option);
+        optionsDiv.appendChild(btn);
+    });
+    chatBody.appendChild(optionsDiv);
+    chatBody.scrollTop = chatBody.scrollHeight;
+}
+function selectOption(option) {
+    lastTopic = option;
+    appendMessage(option, 'user');
+    setTimeout(() => showResponses(option), 400);
+}
+function showResponses(option) {
+    const chatBody = document.getElementById('chat-body');
+    const items = responses[option] || ["No data available for this option."];
+    items.forEach(resp => appendMessage(resp, 'bot'));
+    appendMessage("Do you want to go back to main menu?", "bot");
+    showBackButtons();
+}
+function showBackButtons() {
+    const chatBody = document.getElementById('chat-body');
+    const optionsDiv = document.createElement('div');
+    optionsDiv.className = 'options-container';
+    const yesBtn = document.createElement('button');
+    yesBtn.innerText = "Yes";
+    yesBtn.className = "option-btn";
+    yesBtn.onclick = () => goBackToMenu(lastTopic);
+    const noBtn = document.createElement('button');
+    noBtn.innerText = "No";
+    noBtn.className = "option-btn";
+    noBtn.onclick = () => appendMessage("Okay, staying on this menu.", "bot");
+    optionsDiv.appendChild(yesBtn);
+    optionsDiv.appendChild(noBtn);
+    chatBody.appendChild(optionsDiv);
+    chatBody.scrollTop = chatBody.scrollHeight;
+}
+function goBackToMenu(excludeTopic) {
+    appendMessage("Going back to main menu...", "bot");
+    setTimeout(() => {
+        showMainOptions(excludeTopic);
+    }, 600);
+}
+function appendMessage(message, sender) {
+    const chatBody = document.getElementById('chat-body');
+    if (sender === 'bot') {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-wrapper';
+        const avatar = document.createElement('img');
+        avatar.src = "https://cdn-icons-png.flaticon.com/512/4712/4712035.png";
+        avatar.className = "avatar";
+        const msgDiv = document.createElement('div');
+        msgDiv.classList.add('message', 'bot-message');
+        msgDiv.innerText = message;
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(msgDiv);
+        chatBody.appendChild(wrapper);
+    } else {
+        const msgDiv = document.createElement('div');
+        msgDiv.classList.add('message', 'user-message');
+        msgDiv.innerText = message;
+        chatBody.appendChild(msgDiv);
+    }
+    chatBody.scrollTop = chatBody.scrollHeight;
+}
+// --- Toggle button animation ---
+const chatbotToggle = document.getElementById('chatbot-toggle');
+const chatbotContainer = document.getElementById('chatbot-container');
+function toggleChatbot() {
+    if (chatbotContainer.style.display !== 'flex') {
+        chatbotContainer.style.display = 'flex';
+        chatbotToggle.style.animation = 'hideDown 0.4s forwards';
+        setTimeout(() => chatbotToggle.style.display = 'none', 400);
+        // Show main options on open
+        showMainOptions();
+    } else {
+        chatbotContainer.style.display = 'none';
+        chatbotToggle.style.display = 'flex';
+        chatbotToggle.style.animation = 'showUp 0.4s';
+    }
+}
+// --- Option-aware sendMessage ---
+const userInput = document.getElementById('chat-input');
+function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text) {
+        showErrorToast('Please enter a message!');
+        return;
+    }
+    // Option logic first
+    const lower = text.toLowerCase();
+    // If user types exactly a main option, treat as button click
+    for (const option of mainOptions) {
+        if (lower === option.toLowerCase()) {
+            selectOption(option);
+            userInput.value = "";
+            userInput.style.height = 'auto';
+            return;
+        }
+    }
+    // Otherwise, treat as normal user message
+    appendMessage(text, 'user');
+    userInput.value = "";
+    userInput.style.height = 'auto'; // Reset height if auto-resize is used
+    if (goBackWords.some(word => lower.includes(word))) {
+        goBackToMenu(lastTopic);
+        return;
+    }
+    // Do not auto-match mainOptions by partial/contains
+    // If not matched, fallback to AI (if available)
+    if (typeof getAIResponse === 'function') getAIResponse(text);
+    else appendMessage("I didn't understand that. Please choose from options or say 'Go back to main menu'.", "bot");
+}
+function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+// --- Animations ---
+const style = document.createElement('style');
+style.innerHTML = `
+@keyframes hideDown { from {opacity:1;transform:translateY(0);} to {opacity:0;transform:translateY(60px);} }
+@keyframes showUp { from {opacity:0;transform:translateY(60px);} to {opacity:1;transform:translateY(0);} }
+.options-container { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.option-btn { background: #fffbe7; border: 1px solid #ff512f; color: #ff512f; border-radius: 6px; padding: 6px 16px; cursor: pointer; transition: background 0.2s; }
+.option-btn:hover { background: #ff512f; color: #fff; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.message-wrapper { display: flex; align-items: flex-start; margin-bottom: 8px; }
+`;
+document.head.appendChild(style);
+// Add toast styles
+const toastStyle = document.createElement('style');
+toastStyle.innerHTML = `
+.error-toast {
+  position: fixed;
+  top: 24px;
+  right: 32px;
+  background: #ff512f;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  z-index: 9999;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  opacity: 0;
+  display: none;
+  transition: opacity 0.4s;
+}
+`;
+document.head.appendChild(toastStyle);
+
+function showErrorToast(msg) {
+    const toast = document.getElementById('error-toast');
+    toast.innerText = msg;
+    toast.style.display = 'block';
+    toast.style.opacity = '1';
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => { toast.style.display = 'none'; }, 400);
+    }, 3000);
+}
+    </script>
+</body>
+</html>
